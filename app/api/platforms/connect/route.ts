@@ -2,36 +2,34 @@ import { verifyToken } from "@/lib/auth";
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
+// Define the OAuth configurations
 const OAUTH_CONFIGS = {
 	twitter: {
 		authUrl: "https://twitter.com/i/oauth2/authorize",
 		scope: "tweet.read tweet.write users.read offline.access",
-		envClientId: "TWITTER_CLIENT_ID",
-		envClientSecret: "TWITTER_CLIENT_SECRET",
+		// Store the ENVIRONMENT VARIABLE NAME, not the value
+		envVarName: "TWITTER_CLIENT_ID",
 	},
 	facebook: {
 		authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
 		scope: "pages_manage_posts,pages_read_engagement",
-		envClientId: process.env.FACEBOOK_CLIENT_ID,
-		envClientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+		// FIX: Store the environment variable NAME, not the value
+		envVarName: "FACEBOOK_CLIENT_ID", // This is the key to look up in process.env
 	},
 	instagram: {
 		authUrl: "https://api.instagram.com/oauth/authorize",
 		scope: "user_profile,user_media",
-		envClientId: "INSTAGRAM_CLIENT_ID",
-		envClientSecret: "INSTAGRAM_CLIENT_SECRET",
+		envVarName: "INSTAGRAM_CLIENT_ID",
 	},
 	linkedin: {
 		authUrl: "https://www.linkedin.com/oauth/v2/authorization",
 		scope: "w_member_social,r_liteprofile",
-		envClientId: "LINKEDIN_CLIENT_ID",
-		envClientSecret: "LINKEDIN_CLIENT_SECRET",
+		envVarName: "LINKEDIN_CLIENT_ID",
 	},
 	tiktok: {
 		authUrl: "https://www.tiktok.com/auth/authorize/",
 		scope: "user.info.basic,video.upload",
-		envClientId: "TIKTOK_CLIENT_ID",
-		envClientSecret: "TIKTOK_CLIENT_SECRET",
+		envVarName: "TIKTOK_CLIENT_ID",
 	},
 } as const;
 
@@ -69,18 +67,38 @@ export async function POST(request: NextRequest) {
 		const config = OAUTH_CONFIGS[platform as keyof typeof OAUTH_CONFIGS];
 		const state = crypto.randomBytes(16).toString("hex");
 
-		// ✅ FIX: Get client ID from correct environment variable (without VITE_)
-		const clientId =
-			process.env[config.envClientId as keyof typeof process.env];
+		// ✅ CORRECT: Get client ID using the environment variable name
+		const clientId = process.env[config.envVarName];
+
+		// Debug logging
+		console.log(`🔍 DEBUG for ${platform}:`);
+		console.log(`  - envVarName: ${config.envVarName}`);
+		console.log(`  - clientId exists: ${!!clientId}`);
+		console.log(
+			`  - clientId value: ${
+				clientId ? `${clientId.substring(0, 10)}...` : "undefined"
+			}`
+		);
+		console.log(`  - All FB env:`, {
+			FACEBOOK_CLIENT_ID: process.env.FACEBOOK_CLIENT_ID ? "set" : "missing",
+			FACEBOOK_CLIENT_SECRET: process.env.FACEBOOK_CLIENT_SECRET
+				? "set"
+				: "missing",
+		});
 
 		if (!clientId) {
-			console.error(`Missing ${config.envClientId} environment variable`);
 			return NextResponse.json(
 				{
 					success: false,
 					error: {
 						code: "CONFIG_ERROR",
-						message: `${platform} OAuth not configured. Check server environment variables.`,
+						message: `${platform} OAuth not configured. Missing ${config.envVarName}`,
+						debug: {
+							envVarName: config.envVarName,
+							availableEnvVars: Object.keys(process.env).filter(
+								(key) => key.includes("FACEBOOK") || key.includes("CLIENT")
+							),
+						},
 					},
 				},
 				{ status: 500 }
