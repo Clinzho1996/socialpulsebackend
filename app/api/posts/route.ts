@@ -3,6 +3,7 @@ import { connectToDatabase } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
 
+// Update in your posts API route (app/api/posts/route.ts)
 export async function GET(request: NextRequest) {
 	try {
 		const user = await verifyToken(request);
@@ -10,31 +11,24 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json(
 				{
 					success: false,
-					error: {
-						code: "UNAUTHORIZED",
-						message: "Authentication required",
-					},
+					error: { code: "UNAUTHORIZED", message: "Authentication required" },
 				},
-				{
-					status: 401,
-				}
+				{ status: 401 }
 			);
 		}
 
-		// ✅ FIX: Validate userId before converting to ObjectId
-		if (!user.userId || !ObjectId.isValid(user.userId)) {
+		// ✅ Firebase UID is a string, not ObjectId
+		if (!user.userId || typeof user.userId !== "string") {
 			console.error("Invalid userId:", user.userId);
 			return NextResponse.json(
 				{
 					success: false,
 					error: {
 						code: "VALIDATION_ERROR",
-						message: "Invalid user ID format",
+						message: "Invalid user ID",
 					},
 				},
-				{
-					status: 400,
-				}
+				{ status: 400 }
 			);
 		}
 
@@ -47,18 +41,14 @@ export async function GET(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		// Build query with validated ObjectId
+		// ✅ Query using Firebase UID as string
 		const query: any = {
-			userId: new ObjectId(user.userId),
+			userId: user.userId, // String, not ObjectId
 		};
 
 		if (status) query.status = status;
 		if (platform) query.platforms = platform;
-		if (search)
-			query.content = {
-				$regex: search,
-				$options: "i",
-			};
+		if (search) query.content = { $regex: search, $options: "i" };
 
 		// Get total count
 		const total = await db.collection("posts").countDocuments(query);
@@ -81,22 +71,13 @@ export async function GET(request: NextRequest) {
 					platforms: post.platforms,
 					status: post.status,
 					scheduledTime: post.scheduledTime.toISOString(),
-					engagement: post.analytics || {
-						likes: 0,
-						comments: 0,
-						shares: 0,
-					},
+					engagement: post.analytics || { likes: 0, comments: 0, shares: 0 },
 					mediaUrls: post.mediaUrls || [],
 					category: post.category || "feed",
 					createdAt: post.createdAt?.toISOString(),
 					updatedAt: post.updatedAt?.toISOString(),
 				})),
-				pagination: {
-					page,
-					limit,
-					total,
-					pages: Math.ceil(total / limit),
-				},
+				pagination: { page, limit, total, pages: Math.ceil(total / limit) },
 			},
 		});
 	} catch (error: any) {
@@ -104,14 +85,9 @@ export async function GET(request: NextRequest) {
 		return NextResponse.json(
 			{
 				success: false,
-				error: {
-					code: "SERVER_ERROR",
-					message: error.message,
-				},
+				error: { code: "SERVER_ERROR", message: error.message },
 			},
-			{
-				status: 500,
-			}
+			{ status: 500 }
 		);
 	}
 }
