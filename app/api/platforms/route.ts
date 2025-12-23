@@ -1,3 +1,4 @@
+// app/api/platforms/route.ts - FIXED
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,87 +18,38 @@ export async function GET(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		// Get platforms for this user
+		// ✅ Query with Firebase UID as string
 		const platforms = await db
 			.collection("platforms")
-			.find({ userId: user.userId })
+			.find({ userId: user.userId }) // String, not ObjectId
 			.toArray();
 
-		console.log(
-			`Found ${platforms.length} platforms for user ${user.userId}:`,
-			platforms.map((p) => ({ name: p.name, hasAccessToken: !!p.accessToken }))
-		);
+		console.log(`Found ${platforms.length} platforms for user ${user.userId}`);
 
-		// Format platforms for frontend
-		const formattedPlatforms = platforms.map((platform) => {
-			const basePlatform = {
-				id: platform._id?.toString() || platform.id,
-				_id: platform._id?.toString() || platform.id,
-				name: platform.name?.toLowerCase() || platform.platform,
-				platform: platform.name?.toLowerCase() || platform.platform,
-				userId: platform.userId,
-				accessToken: platform.accessToken,
-				refreshToken: platform.refreshToken,
-				tokenExpiry: platform.tokenExpiry,
-				createdAt: platform.createdAt,
-				updatedAt: platform.updatedAt,
-				// Determine if connected based on access token
-				connected: !!(
-					platform.accessToken &&
-					(!platform.tokenExpiry || new Date(platform.tokenExpiry) > new Date())
-				),
-				isConnected: !!(
-					platform.accessToken &&
-					(!platform.tokenExpiry || new Date(platform.tokenExpiry) > new Date())
-				),
-			};
-
-			// Add platform-specific fields
-			if (
-				platform.name?.toLowerCase() === "facebook" ||
-				platform.platform === "facebook"
-			) {
-				return {
-					...basePlatform,
-					username:
-						platform.email ||
-						platform.username ||
-						platform.name ||
-						"Facebook User",
-					followers: platform.followers?.toString() || "0",
-				};
-			}
-
-			if (
-				platform.name?.toLowerCase() === "twitter" ||
-				platform.platform === "twitter"
-			) {
-				return {
-					...basePlatform,
-					username: platform.username || platform.screenName || "Twitter User",
-					followers: platform.followers?.toString() || "0",
-				};
-			}
-
-			if (
-				platform.name?.toLowerCase() === "instagram" ||
-				platform.platform === "instagram"
-			) {
-				return {
-					...basePlatform,
-					username: platform.username || "Instagram User",
-					followers: platform.followers?.toString() || "0",
-				};
-			}
-
-			// Default for other platforms
-			return {
-				...basePlatform,
-				username:
-					platform.username || platform.email || platform.name || "User",
-				followers: platform.followers?.toString() || "0",
-			};
-		});
+		// Format response
+		const formattedPlatforms = platforms.map((platform) => ({
+			id: platform._id?.toString(),
+			_id: platform._id?.toString(),
+			name: platform.name?.toLowerCase(),
+			platform: platform.name?.toLowerCase(),
+			userId: platform.userId,
+			accessToken: platform.accessToken,
+			refreshToken: platform.refreshToken,
+			tokenExpiry: platform.tokenExpiry,
+			// Determine connection status
+			connected: !!(
+				platform.accessToken &&
+				(!platform.tokenExpiry || new Date(platform.tokenExpiry) > new Date())
+			),
+			isConnected: !!(
+				platform.accessToken &&
+				(!platform.tokenExpiry || new Date(platform.tokenExpiry) > new Date())
+			),
+			username: platform.username || platform.email || platform.name || "User",
+			followers: platform.followers?.toString() || "0",
+			createdAt: platform.createdAt,
+			updatedAt: platform.updatedAt,
+		}));
 
 		return NextResponse.json({
 			success: true,
@@ -108,10 +60,7 @@ export async function GET(request: NextRequest) {
 		return NextResponse.json(
 			{
 				success: false,
-				error: {
-					code: "SERVER_ERROR",
-					message: error.message,
-				},
+				error: { code: "SERVER_ERROR", message: error.message },
 			},
 			{ status: 500 }
 		);
