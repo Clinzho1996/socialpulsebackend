@@ -12,9 +12,8 @@ const OAUTH_CONFIGS = {
 	},
 	facebook: {
 		authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
-		scope: "pages_show_list,pages_read_engagement,pages_manage_posts",
-		// FIX: Store the environment variable NAME, not the value
-		envVarName: "FACEBOOK_CLIENT_ID", // This is the key to look up in process.env
+		scope: "public_profile,email",
+		envVarName: "FACEBOOK_CLIENT_ID",
 	},
 	instagram: {
 		authUrl: "https://api.instagram.com/oauth/authorize",
