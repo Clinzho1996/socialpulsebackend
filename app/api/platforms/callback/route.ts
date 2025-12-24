@@ -121,7 +121,8 @@ async function exchangeTwitterCode(code: string, redirectUri: string) {
 			expires_in: data.expires_in,
 			token_type: data.token_type,
 			user: {
-				id: data.user_id, // Twitter might return user_id directly
+				id: data.user_id,
+				username: data.screen_name,
 			},
 		};
 	} catch (error: any) {
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
 
 		console.log(`✅ Token exchange successful for ${platform}:`, {
 			hasAccessToken: !!tokenData.access_token,
-			username: tokenData.user,
+			username: tokenData.user.username || "unknown",
 		});
 
 		const { db } = await connectToDatabase();
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
 			userId: user.userId, // Firebase UID as string (not ObjectId)
 			name: platform.toLowerCase(),
 			connected: true,
-			username: tokenData.user || `@user_${platform}`,
+			username: tokenData.user.username || `@user_${platform}`,
 			accessToken: tokenData.access_token,
 			refreshToken: tokenData.refresh_token || null,
 			tokenExpiry: tokenData.expires_in
