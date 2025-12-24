@@ -28,69 +28,106 @@ async function exchangeCodeForToken(
 }
 
 async function exchangeTwitterCode(code: string, redirectUri: string) {
-	console.log("🔔 TWITTER CODE EXCHANGE STARTED");
-	console.log("🔑 Client ID exists:", !!process.env.TWITTER_CLIENT_ID);
-	console.log("🔑 Client Secret exists:", !!process.env.TWITTER_CLIENT_SECRET);
-	console.log("📦 Code length:", code?.length);
+	console.log("🔔 EXCHANGE_TWITTER_CODE CALLED");
+	console.log(
+		"📦 Code received (first 50 chars):",
+		code.substring(0, 50) + "..."
+	);
 	console.log("🌐 Redirect URI:", redirectUri);
+
 	const clientId = process.env.TWITTER_CLIENT_ID;
 	const clientSecret = process.env.TWITTER_CLIENT_SECRET;
 
+	console.log("🔑 Client ID exists:", !!clientId);
+	console.log(
+		"🔑 Client ID value:",
+		clientId ? `${clientId.substring(0, 10)}...` : "missing"
+	);
+	console.log("🔑 Client Secret exists:", !!clientSecret);
+
 	if (!clientId || !clientSecret) {
+		console.error("❌ Twitter OAuth credentials missing");
 		throw new Error("Twitter OAuth not configured");
 	}
 
-	const response = await fetch("https://api.twitter.com/2/oauth2/token", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/x-www-form-urlencoded",
-			Authorization: `Basic ${Buffer.from(
-				`${clientId}:${clientSecret}`
-			).toString("base64")}`,
-		},
-		body: new URLSearchParams({
-			code,
-			grant_type: "authorization_code",
-			redirect_uri: redirectUri,
-			client_id: clientId,
-			code_verifier: "challenge", // IMPORTANT: You need to store and retrieve the actual code_verifier
-		}),
+	// Prepare the request
+	const params = new URLSearchParams({
+		code,
+		grant_type: "authorization_code",
+		redirect_uri: redirectUri,
+		client_id: clientId,
+		code_verifier: "challenge", // This might be the issue!
 	});
 
-	const data = await response.json();
+	console.log("📦 Request params:", {
+		code_length: code.length,
+		redirect_uri: redirectUri,
+		client_id_length: clientId.length,
+		has_code_verifier: true,
+	});
 
-	if (!response.ok) {
-		console.error("Twitter token exchange error:", data);
-		throw new Error(
-			data.error_description || data.error || "Failed to exchange Twitter code"
+	try {
+		console.log("📞 Calling Twitter token endpoint...");
+		console.log("🔗 URL: https://api.twitter.com/2/oauth2/token");
+
+		const response = await fetch("https://api.twitter.com/2/oauth2/token", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				Authorization: `Basic ${Buffer.from(
+					`${clientId}:${clientSecret}`
+				).toString("base64")}`,
+			},
+			body: params,
+		});
+
+		console.log("📊 Twitter response status:", response.status);
+		console.log(
+			"📊 Twitter response headers:",
+			Object.fromEntries(response.headers.entries())
 		);
+
+		const responseText = await response.text();
+		console.log("📊 Twitter response text:", responseText);
+
+		let data;
+		try {
+			data = JSON.parse(responseText);
+			console.log("📊 Twitter parsed response:", data);
+		} catch (e) {
+			console.error(
+				"❌ Failed to parse Twitter response as JSON:",
+				responseText
+			);
+			throw new Error("Invalid response from Twitter");
+		}
+
+		if (!response.ok) {
+			console.error("❌ Twitter token exchange failed:", data);
+			throw new Error(
+				data.error_description ||
+					data.error ||
+					`Twitter error: ${response.status}`
+			);
+		}
+
+		console.log("✅ Twitter token exchange successful!");
+		console.log("🔑 Access token received:", data.access_token ? "Yes" : "No");
+		console.log("👤 Token type:", data.token_type);
+
+		return {
+			access_token: data.access_token,
+			refresh_token: data.refresh_token,
+			expires_in: data.expires_in,
+			token_type: data.token_type,
+			user: {
+				id: data.user_id, // Twitter might return user_id directly
+			},
+		};
+	} catch (error: any) {
+		console.error("💥 Twitter exchange error:", error);
+		throw error;
 	}
-
-	// Get user info
-	const userResponse = await fetch("https://api.twitter.com/2/users/me", {
-		headers: {
-			Authorization: `Bearer ${data.access_token}`,
-		},
-	});
-
-	const userData = await userResponse.json();
-
-	if (!userResponse.ok) {
-		console.error("Twitter user info error:", userData);
-		throw new Error(userData.detail || "Failed to get Twitter user info");
-	}
-
-	return {
-		access_token: data.access_token,
-		refresh_token: data.refresh_token,
-		expires_in: data.expires_in,
-		token_type: data.token_type,
-		user: {
-			id: userData.data?.id,
-			username: userData.data?.username,
-			name: userData.data?.name,
-		},
-	};
 }
 
 // Add similar functions for other platforms...
@@ -145,7 +182,7 @@ export async function POST(request: NextRequest) {
 
 		console.log(`✅ Token exchange successful for ${platform}:`, {
 			hasAccessToken: !!tokenData.access_token,
-			username: tokenData.user?.username,
+			username: tokenData.user,
 		});
 
 		const { db } = await connectToDatabase();
@@ -155,7 +192,7 @@ export async function POST(request: NextRequest) {
 			userId: user.userId, // Firebase UID as string (not ObjectId)
 			name: platform.toLowerCase(),
 			connected: true,
-			username: tokenData.user?.username || `@user_${platform}`,
+			username: tokenData.user || `@user_${platform}`,
 			accessToken: tokenData.access_token,
 			refreshToken: tokenData.refresh_token || null,
 			tokenExpiry: tokenData.expires_in
