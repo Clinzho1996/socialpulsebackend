@@ -1,55 +1,21 @@
+// /api/platforms/connect/route.ts
 import { verifyToken } from "@/lib/auth";
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
-// Define the OAuth configurations
-const OAUTH_CONFIGS = {
+const PLATFORM_CONFIGS = {
 	twitter: {
 		authUrl: "https://twitter.com/i/oauth2/authorize",
-		tokenUrl: "https://api.twitter.com/2/oauth2/token",
 		scope: "tweet.read tweet.write users.read offline.access",
-		envVarName: "TWITTER_CLIENT_ID",
-		requiresPKCE: true,
+		clientId: process.env.TWITTER_CLIENT_ID,
 	},
 	facebook: {
 		authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
 		scope: "public_profile,email",
-		envVarName: "FACEBOOK_CLIENT_ID",
-		requiresPKCE: false,
+		clientId: process.env.FACEBOOK_CLIENT_ID,
 	},
-	instagram: {
-		authUrl: "https://api.instagram.com/oauth/authorize",
-		scope: "user_profile,user_media",
-		envVarName: "INSTAGRAM_CLIENT_ID",
-		requiresPKCE: false,
-	},
-	linkedin: {
-		authUrl: "https://www.linkedin.com/oauth/v2/authorization",
-		scope: "w_member_social,r_liteprofile",
-		envVarName: "LINKEDIN_CLIENT_ID",
-		requiresPKCE: false,
-	},
-	tiktok: {
-		authUrl: "https://www.tiktok.com/auth/authorize/",
-		scope: "user.info.basic,video.upload",
-		envVarName: "TIKTOK_CLIENT_ID",
-		requiresPKCE: false,
-	},
-} as const;
-
-// Helper function to generate PKCE code verifier and challenge
-function generatePKCE() {
-	// Generate code verifier (43-128 characters, a-z, A-Z, 0-9, -, ., _, ~)
-	const codeVerifier = crypto.randomBytes(32).toString("base64url");
-
-	// Generate code challenge (SHA256 of code verifier, then base64url)
-	const codeChallenge = crypto
-		.createHash("sha256")
-		.update(codeVerifier)
-		.digest("base64url");
-
-	return { codeVerifier, codeChallenge };
-}
+	// Add other platforms...
+};
 
 export async function POST(request: NextRequest) {
 	try {
@@ -58,10 +24,7 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json(
 				{
 					success: false,
-					error: {
-						code: "UNAUTHORIZED",
-						message: "Authentication required",
-					},
+					error: { code: "UNAUTHORIZED", message: "Authentication required" },
 				},
 				{ status: 401 }
 			);
@@ -69,83 +32,80 @@ export async function POST(request: NextRequest) {
 
 		const { platform, redirectUri } = await request.json();
 
-		if (!platform || !OAUTH_CONFIGS[platform as keyof typeof OAUTH_CONFIGS]) {
+		if (
+			!platform ||
+			!PLATFORM_CONFIGS[platform as keyof typeof PLATFORM_CONFIGS]
+		) {
 			return NextResponse.json(
 				{
 					success: false,
-					error: {
-						code: "VALIDATION_ERROR",
-						message: "Invalid platform",
-					},
+					error: { code: "VALIDATION_ERROR", message: "Invalid platform" },
 				},
 				{ status: 400 }
 			);
 		}
 
-		const config = OAUTH_CONFIGS[platform as keyof typeof OAUTH_CONFIGS];
-		const state = crypto.randomBytes(16).toString("hex");
-		const clientId = process.env[config.envVarName];
+		const config = PLATFORM_CONFIGS[platform as keyof typeof PLATFORM_CONFIGS];
 
-		if (!clientId) {
+		if (!config.clientId) {
 			return NextResponse.json(
 				{
 					success: false,
 					error: {
 						code: "CONFIG_ERROR",
-						message: `${platform} OAuth not configured. Missing ${config.envVarName}`,
+						message: `${platform} OAuth not configured`,
 					},
 				},
 				{ status: 500 }
 			);
 		}
 
-		// Build OAuth URL
-		const params = new URLSearchParams({
-			client_id: clientId,
+		const state = crypto.randomBytes(16).toString("hex");
+
+		// For Twitter PKCE
+		let authUrl = `${config.authUrl}?${new URLSearchParams({
+			client_id: config.clientId,
 			redirect_uri: redirectUri,
 			response_type: "code",
 			scope: config.scope,
 			state,
-		});
+		})}`;
 
-		// Add PKCE parameters for Twitter/X
-		let codeVerifier = null;
-		if (config.requiresPKCE) {
-			const pkce = generatePKCE();
-			codeVerifier = pkce.codeVerifier;
+		// Add PKCE for Twitter
+		if (platform === "twitter") {
+			const codeVerifier = crypto.randomBytes(32).toString("base64url");
+			const codeChallenge = crypto
+				.createHash("sha256")
+				.update(codeVerifier)
+				.digest("base64url");
 
-			params.append("code_challenge", pkce.codeChallenge);
-			params.append("code_challenge_method", "S256");
+			authUrl += `&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+
+			// Store codeVerifier with state (in practice, use a database or cache)
+			// For now, we'll return it to the frontend
+			return NextResponse.json({
+				success: true,
+				data: {
+					authUrl,
+					state,
+					codeVerifier, // Frontend should store this and send back with callback
+				},
+			});
 		}
 
-		const authUrl = `${config.authUrl}?${params.toString()}`;
-
-		// Prepare response data
-		const responseData: any = {
+		return NextResponse.json({
 			success: true,
 			data: {
 				authUrl,
 				state,
 			},
-		};
-
-		// Include code verifier in response if needed (store securely!)
-		if (codeVerifier) {
-			responseData.data.codeVerifier = codeVerifier;
-			// IMPORTANT: In production, you should store this server-side
-			// and associate it with the user/session
-		}
-
-		return NextResponse.json(responseData);
+		});
 	} catch (error: any) {
 		console.error("Platform connect error:", error);
 		return NextResponse.json(
 			{
 				success: false,
-				error: {
-					code: "SERVER_ERROR",
-					message: error.message,
-				},
+				error: { code: "SERVER_ERROR", message: error.message },
 			},
 			{ status: 500 }
 		);

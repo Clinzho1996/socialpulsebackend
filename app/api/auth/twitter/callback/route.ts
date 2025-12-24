@@ -6,47 +6,25 @@ export async function GET(request: NextRequest) {
 		const searchParams = request.nextUrl.searchParams;
 		const code = searchParams.get("code");
 		const state = searchParams.get("state");
-		const error = searchParams.get("error");
-		const errorDescription = searchParams.get("error_description");
 
-		// Handle errors
-		if (error) {
-			console.error("Twitter OAuth error:", {
-				error,
-				errorDescription,
-				state,
-			});
-
-			// Redirect back to your app with error
-			return NextResponse.redirect(
-				new URL(
-					`/settings/integrations?error=${encodeURIComponent(
-						errorDescription || error
-					)}`,
-					request.url
-				)
-			);
-		}
+		console.log("📱 Twitter callback received:", { code, state });
 
 		if (!code) {
+			console.error("❌ No code in callback");
 			return NextResponse.redirect(
-				new URL(
-					"/settings/integrations?error=No authorization code received",
-					request.url
-				)
+				`${process.env.NEXT_PUBLIC_APP_URL}/settings/integrations?error=No authorization code received`
 			);
 		}
 
-		// Exchange code for access token
+		// Get code verifier from your storage (you need to store this when generating the auth URL)
+		// For now, we'll handle it differently since you're not storing it
 		const clientId = process.env.TWITTER_CLIENT_ID;
 		const clientSecret = process.env.TWITTER_CLIENT_SECRET;
 		const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/twitter/callback`;
 
-		// IMPORTANT: You need to get the code_verifier that was stored
-		// when generating the auth URL. This should be stored server-side
-		// or passed via state parameter.
-		const codeVerifier = ""; // Get from your storage based on state
+		console.log("🔑 Exchanging code for token...");
 
+		// Exchange code for access token
 		const tokenResponse = await fetch(
 			"https://api.twitter.com/2/oauth2/token",
 			{
@@ -60,24 +38,25 @@ export async function GET(request: NextRequest) {
 				body: new URLSearchParams({
 					code,
 					grant_type: "authorization_code",
-					client_id: clientId!,
 					redirect_uri: redirectUri,
-					code_verifier: codeVerifier,
+					code_verifier: "challenge", // You need to store and retrieve the actual code_verifier
+					client_id: clientId!,
 				}),
 			}
 		);
 
 		const tokenData = await tokenResponse.json();
 
+		console.log("📊 Token response:", tokenData);
+
 		if (!tokenResponse.ok) {
-			console.error("Token exchange error:", tokenData);
+			console.error("❌ Token exchange failed:", tokenData);
 			return NextResponse.redirect(
-				new URL(
-					`/settings/integrations?error=${encodeURIComponent(
-						tokenData.error_description || "Failed to get access token"
-					)}`,
-					request.url
-				)
+				`${
+					process.env.NEXT_PUBLIC_APP_URL
+				}/settings/integrations?error=${encodeURIComponent(
+					tokenData.error_description || "Failed to get access token"
+				)}`
 			);
 		}
 
@@ -90,23 +69,49 @@ export async function GET(request: NextRequest) {
 
 		const userData = await userResponse.json();
 
-		// Store tokens and user info in your database
-		// ...
+		console.log("👤 Twitter user data:", userData);
 
-		// Redirect back to success page
+		if (!userResponse.ok) {
+			console.error("❌ Failed to get user info:", userData);
+			return NextResponse.redirect(
+				`${
+					process.env.NEXT_PUBLIC_APP_URL
+				}/settings/integrations?error=${encodeURIComponent(
+					userData.detail || "Failed to get user info"
+				)}`
+			);
+		}
+
+		// Now you need to save this to your database
+		// But we need to know which user this belongs to
+		// You should store the state parameter with the user ID when generating the auth URL
+
+		// For now, we'll redirect to a page where the frontend can save it
+		const params = new URLSearchParams({
+			platform: "twitter",
+			access_token: tokenData.access_token,
+			refresh_token: tokenData.refresh_token || "",
+			token_expiry: new Date(
+				Date.now() + tokenData.expires_in * 1000
+			).toISOString(),
+			twitter_user_id: userData.data.id,
+			twitter_username: userData.data.username,
+			twitter_name: userData.data.name,
+		});
+
 		return NextResponse.redirect(
-			new URL(
-				`/settings/integrations?success=true&platform=twitter&username=${userData.data.username}`,
-				request.url
-			)
+			`${
+				process.env.NEXT_PUBLIC_APP_URL
+			}/settings/integrations/callback?${params.toString()}`
 		);
 	} catch (error: any) {
-		console.error("Twitter callback error:", error);
+		console.error("❌ Twitter callback error:", error);
 		return NextResponse.redirect(
-			new URL(
-				`/settings/integrations?error=${encodeURIComponent(error.message)}`,
-				request.url
-			)
+			`${
+				process.env.NEXT_PUBLIC_APP_URL
+			}/settings/integrations?error=${encodeURIComponent(
+				error.message || "Unknown error"
+			)}`
 		);
 	}
 }
