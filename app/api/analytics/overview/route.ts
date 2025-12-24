@@ -11,7 +11,7 @@ function setCorsHeaders(
 	const allowedOrigins = [
 		"http://localhost:5173",
 		"http://localhost:3000",
-		"https://socialpulseai.vercel.app",
+		"https://socialpulseai.devclinton.org",
 	];
 
 	const origin = request.headers.get("origin");
