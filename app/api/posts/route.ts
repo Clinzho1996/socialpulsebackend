@@ -3,24 +3,80 @@ import { connectToDatabase } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
 
-// Update in your posts API route (app/api/posts/route.ts)
+// Allowed origins for CORS
+const allowedOrigins = [
+	"http://localhost:5173", // Vite dev server
+	"http://localhost:3000", // Next.js dev server
+	"https://socialplusbbackend.vercel.app", // Your production backend
+	"https://socialpulseai.vercel.app", // Your production frontend
+	// Add other origins as needed
+];
+
+// Helper function to set CORS headers
+function setCorsHeaders(
+	response: NextResponse,
+	request: NextRequest
+): NextResponse {
+	const origin = request.headers.get("origin");
+	const isAllowedOrigin = allowedOrigins.includes(origin || "");
+
+	const headers = {
+		"Access-Control-Allow-Origin": isAllowedOrigin
+			? origin!
+			: allowedOrigins[0],
+		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+		"Access-Control-Allow-Headers":
+			"Content-Type, Authorization, X-Requested-With",
+		"Access-Control-Allow-Credentials": "true",
+		"Access-Control-Max-Age": "86400", // 24 hours
+	};
+
+	Object.entries(headers).forEach(([key, value]) => {
+		response.headers.set(key, value);
+	});
+
+	return response;
+}
+
+// Handle preflight OPTIONS requests
+export async function OPTIONS(request: NextRequest) {
+	const origin = request.headers.get("origin");
+	const isAllowedOrigin = allowedOrigins.includes(origin || "");
+
+	return new NextResponse(null, {
+		status: 200,
+		headers: {
+			"Access-Control-Allow-Origin": isAllowedOrigin
+				? origin!
+				: allowedOrigins[0],
+			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+			"Access-Control-Allow-Headers":
+				"Content-Type, Authorization, X-Requested-With",
+			"Access-Control-Allow-Credentials": "true",
+			"Access-Control-Max-Age": "86400",
+			Vary: "Origin", // Important for caching
+		},
+	});
+}
+
 export async function GET(request: NextRequest) {
 	try {
 		const user = await verifyToken(request);
 		if (!user) {
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: { code: "UNAUTHORIZED", message: "Authentication required" },
 				},
 				{ status: 401 }
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		// ✅ Firebase UID is a string, not ObjectId
 		if (!user.userId || typeof user.userId !== "string") {
 			console.error("Invalid userId:", user.userId);
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: {
@@ -30,6 +86,7 @@ export async function GET(request: NextRequest) {
 				},
 				{ status: 400 }
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		const { searchParams } = new URL(request.url);
@@ -46,8 +103,10 @@ export async function GET(request: NextRequest) {
 			userId: user.userId, // String, not ObjectId
 		};
 
-		if (status) query.status = status;
-		if (platform) query.platforms = platform;
+		if (status && status !== "all") query.status = status;
+		if (platform && platform !== "all") {
+			query.platforms = platform;
+		}
 		if (search) query.content = { $regex: search, $options: "i" };
 
 		// Get total count
@@ -62,7 +121,7 @@ export async function GET(request: NextRequest) {
 			.limit(limit)
 			.toArray();
 
-		return NextResponse.json({
+		const response = NextResponse.json({
 			success: true,
 			data: {
 				posts: posts.map((post) => ({
@@ -71,24 +130,40 @@ export async function GET(request: NextRequest) {
 					platforms: post.platforms,
 					status: post.status,
 					scheduledTime: post.scheduledTime.toISOString(),
-					engagement: post.analytics || { likes: 0, comments: 0, shares: 0 },
+					engagement: post.analytics || {
+						likes: 0,
+						comments: 0,
+						shares: 0,
+						views: 0,
+					},
 					mediaUrls: post.mediaUrls || [],
 					category: post.category || "feed",
 					createdAt: post.createdAt?.toISOString(),
 					updatedAt: post.updatedAt?.toISOString(),
 				})),
-				pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+				pagination: {
+					page,
+					limit,
+					total,
+					pages: Math.ceil(total / limit),
+				},
 			},
 		});
+
+		return setCorsHeaders(response, request);
 	} catch (error: any) {
 		console.error("Get posts error:", error);
-		return NextResponse.json(
+		const response = NextResponse.json(
 			{
 				success: false,
-				error: { code: "SERVER_ERROR", message: error.message },
+				error: {
+					code: "SERVER_ERROR",
+					message: error.message || "Internal server error",
+				},
 			},
 			{ status: 500 }
 		);
+		return setCorsHeaders(response, request);
 	}
 }
 
@@ -96,7 +171,7 @@ export async function POST(request: NextRequest) {
 	try {
 		const user = await verifyToken(request);
 		if (!user) {
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: {
@@ -108,12 +183,13 @@ export async function POST(request: NextRequest) {
 					status: 401,
 				}
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		// ✅ FIX: Validate userId before converting to ObjectId
 		if (!user.userId || !ObjectId.isValid(user.userId)) {
 			console.error("Invalid userId:", user.userId);
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: {
@@ -125,6 +201,7 @@ export async function POST(request: NextRequest) {
 					status: 400,
 				}
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		const body = await request.json();
@@ -133,7 +210,7 @@ export async function POST(request: NextRequest) {
 
 		// Validation
 		if (!content || !platforms || !scheduledTime) {
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: {
@@ -145,11 +222,12 @@ export async function POST(request: NextRequest) {
 					status: 400,
 				}
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		// Validate platforms array
 		if (!Array.isArray(platforms) || platforms.length === 0) {
-			return NextResponse.json(
+			const response = NextResponse.json(
 				{
 					success: false,
 					error: {
@@ -161,6 +239,7 @@ export async function POST(request: NextRequest) {
 					status: 400,
 				}
 			);
+			return setCorsHeaders(response, request);
 		}
 
 		const { db } = await connectToDatabase();
@@ -187,7 +266,7 @@ export async function POST(request: NextRequest) {
 
 		const result = await db.collection("posts").insertOne(newPost);
 
-		return NextResponse.json(
+		const response = NextResponse.json(
 			{
 				success: true,
 				data: {
@@ -199,25 +278,59 @@ export async function POST(request: NextRequest) {
 					category: newPost.category,
 					mediaUrls: newPost.mediaUrls,
 					engagement: newPost.analytics,
+					createdAt: newPost.createdAt.toISOString(),
+					updatedAt: newPost.updatedAt.toISOString(),
 				},
 			},
 			{
 				status: 201,
 			}
 		);
+
+		return setCorsHeaders(response, request);
 	} catch (error: any) {
 		console.error("Create post error:", error);
-		return NextResponse.json(
+		const response = NextResponse.json(
 			{
 				success: false,
 				error: {
 					code: "SERVER_ERROR",
-					message: error.message,
+					message: error.message || "Internal server error",
 				},
 			},
 			{
 				status: 500,
 			}
 		);
+		return setCorsHeaders(response, request);
 	}
+}
+
+// Optional: Add DELETE and PUT methods with CORS
+export async function DELETE(request: NextRequest) {
+	const response = NextResponse.json(
+		{
+			success: false,
+			error: {
+				code: "METHOD_NOT_ALLOWED",
+				message: "DELETE method not implemented",
+			},
+		},
+		{ status: 405 }
+	);
+	return setCorsHeaders(response, request);
+}
+
+export async function PUT(request: NextRequest) {
+	const response = NextResponse.json(
+		{
+			success: false,
+			error: {
+				code: "METHOD_NOT_ALLOWED",
+				message: "PUT method not implemented",
+			},
+		},
+		{ status: 405 }
+	);
+	return setCorsHeaders(response, request);
 }
