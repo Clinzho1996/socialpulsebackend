@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 const allowedOrigins = [
 	"http://localhost:5173", // Vite dev server
 	"http://localhost:3000", // Next.js dev server
-	"https://socialplusbbackend.vercel.app", // Your production backend
+	"https://socialpulseai.devclinton.org", // Your production backend
 	"https://socialpulseai.vercel.app", // Your production frontend
 	// Add other origins as needed
 ];
