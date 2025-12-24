@@ -1,4 +1,4 @@
-// In your backend route handler (/api/team/members/route.ts)
+// In /api/team/members/route.ts
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
@@ -24,55 +24,51 @@ export async function GET(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		// Debug: Log the userId to check its format
-		console.log("User ID:", user.userId);
+		console.log("🔍 User from token:", user);
 
-		// Try to create ObjectId, handle invalid format
-		let workspaceId;
-		try {
-			workspaceId = new ObjectId(user.userId);
-		} catch (error) {
-			console.error("Invalid ObjectId format:", user.userId);
-			return NextResponse.json(
-				{
-					success: false,
-					error: {
-						code: "INVALID_ID",
-						message: "Invalid user ID format",
-					},
-				},
-				{
-					status: 400,
-				}
-			);
+		// Try to query with both ObjectId and string
+		let query;
+
+		if (/^[0-9a-fA-F]{24}$/.test(user.userId)) {
+			// It's a valid ObjectId format
+			console.log("✅ Valid ObjectId format");
+			query = { workspaceId: new ObjectId(user.userId) };
+		} else {
+			// It's not an ObjectId, use string comparison
+			console.log("⚠️ Not an ObjectId, using string comparison");
+			query = { workspaceId: user.userId };
 		}
 
-		const members = await db
-			.collection("team_members")
-			.find({ workspaceId })
-			.toArray();
+		console.log("🔍 Query:", JSON.stringify(query));
+
+		const members = await db.collection("team_members").find(query).toArray();
+
+		console.log(`✅ Found ${members.length} members`);
+
+		// Return empty array if no members found
+		const formattedMembers = members.map((member) => ({
+			id: member._id?.toString() || "",
+			name: member.name || member.email.split("@")[0],
+			email: member.email,
+			role: member.role || "viewer",
+			status: member.status || "pending",
+			invitedAt: member.invitedAt?.toISOString() || new Date().toISOString(),
+			createdAt: member.createdAt?.toISOString(),
+			workspaceId: member.workspaceId?.toString(),
+		}));
 
 		return NextResponse.json({
 			success: true,
-			data: members.map((member) => ({
-				id: member._id?.toString() || "",
-				name: member.name || member.email.split("@")[0], // Fallback name
-				email: member.email,
-				role: member.role || "viewer",
-				status: member.status || "pending",
-				invitedAt: member.invitedAt?.toISOString() || new Date().toISOString(),
-				createdAt: member.createdAt?.toISOString(),
-				workspaceId: member.workspaceId?.toString(),
-			})),
+			data: formattedMembers,
 		});
 	} catch (error: any) {
-		console.error("Get team members error:", error);
+		console.error("❌ Get team members error:", error);
 		return NextResponse.json(
 			{
 				success: false,
 				error: {
 					code: "SERVER_ERROR",
-					message: error.message,
+					message: error.message || "Internal server error",
 				},
 			},
 			{
