@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 const allowedOrigins = [
 	"http://localhost:5173", // Your Vite dev server
 	"http://localhost:3000", // Local Next.js
-	"https://socialpulseai.vercel.app", // Your production frontend
+	"https://socialpulseai-rose.vercel.app/",
+	"https://socialpulseai.devclinton.org",
 ];
 
 const corsOptions = {
