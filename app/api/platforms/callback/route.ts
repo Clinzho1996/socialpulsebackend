@@ -28,6 +28,11 @@ async function exchangeCodeForToken(
 }
 
 async function exchangeTwitterCode(code: string, redirectUri: string) {
+	console.log("🔔 TWITTER CODE EXCHANGE STARTED");
+	console.log("🔑 Client ID exists:", !!process.env.TWITTER_CLIENT_ID);
+	console.log("🔑 Client Secret exists:", !!process.env.TWITTER_CLIENT_SECRET);
+	console.log("📦 Code length:", code?.length);
+	console.log("🌐 Redirect URI:", redirectUri);
 	const clientId = process.env.TWITTER_CLIENT_ID;
 	const clientSecret = process.env.TWITTER_CLIENT_SECRET;
 
@@ -91,8 +96,12 @@ async function exchangeTwitterCode(code: string, redirectUri: string) {
 // Add similar functions for other platforms...
 
 export async function POST(request: NextRequest) {
+	console.log("🔔🔔🔔 CALLBACK ENDPOINT HIT!");
+	console.log("📱 Request URL:", request.url);
+	console.log("📦 Has body?", request.body ? "Yes" : "No");
 	try {
 		const user = await verifyToken(request);
+		console.log("👤 User authenticated:", user ? `Yes (${user.userId})` : "No");
 		if (!user) {
 			return NextResponse.json(
 				{
