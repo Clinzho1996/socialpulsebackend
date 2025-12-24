@@ -133,77 +133,52 @@ async function exchangeTwitterCode(code: string, redirectUri: string) {
 
 // Add similar functions for other platforms...
 
+// In /api/platforms/callback/route.ts - temporarily modify
 export async function POST(request: NextRequest) {
-	console.log("🔔🔔🔔 CALLBACK ENDPOINT HIT!");
-	console.log("📱 Request URL:", request.url);
-	console.log("📦 Has body?", request.body ? "Yes" : "No");
 	try {
 		const user = await verifyToken(request);
-		console.log("👤 User authenticated:", user ? `Yes (${user.userId})` : "No");
 		if (!user) {
 			return NextResponse.json(
-				{
-					success: false,
-					error: {
-						code: "UNAUTHORIZED",
-						message: "Authentication required",
-					},
-				},
-				{
-					status: 401,
-				}
+				{ success: false, error: "Unauthorized" },
+				{ status: 401 }
 			);
 		}
 
-		const { platform, code, state, redirectUri } = await request.json();
+		const { platform, code, state } = await request.json();
 
-		if (!platform || !code) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: {
-						code: "VALIDATION_ERROR",
-						message: "Platform and code are required",
-					},
-				},
-				{
-					status: 400,
-				}
-			);
-		}
+		console.log(`🔄 Processing ${platform} callback for user ${user.userId}`);
+		console.log(`📦 Code received: ${code?.substring(0, 30)}...`);
 
-		console.log(`📱 Processing ${platform} callback for user ${user.userId}`);
+		// TEMPORARY: Skip Twitter API and save mock data
+		console.log("⚠️ TEMPORARY: Using mock Twitter data");
 
-		// IMPORTANT: Exchange code for actual access token
-		const tokenData = await exchangeCodeForToken(
-			platform,
-			code,
-			redirectUri || `${request.nextUrl.origin}/callback`
-		);
-
-		console.log(`✅ Token exchange successful for ${platform}:`, {
-			hasAccessToken: !!tokenData.access_token,
-			username: tokenData.user.username || "unknown",
-		});
+		const mockTokenData = {
+			access_token: `mock_twitter_token_${Date.now()}`,
+			refresh_token: `mock_refresh_${Date.now()}`,
+			expires_in: 3600,
+			token_type: "bearer",
+			user: {
+				id: `twitter_${Date.now()}`,
+				username: "test_twitter_user",
+				name: "Test Twitter User",
+			},
+		};
 
 		const { db } = await connectToDatabase();
 
-		// Prepare actual platform data from OAuth response
 		const platformData = {
-			userId: user.userId, // Firebase UID as string (not ObjectId)
+			userId: user.userId,
 			name: platform.toLowerCase(),
 			connected: true,
-			username: tokenData.user.username || `@user_${platform}`,
-			accessToken: tokenData.access_token,
-			refreshToken: tokenData.refresh_token || null,
-			tokenExpiry: tokenData.expires_in
-				? new Date(Date.now() + tokenData.expires_in * 1000)
-				: new Date(Date.now() + 3600000),
-			platformUserId: tokenData.user?.id,
-			platformUserData: tokenData.user,
+			username: mockTokenData.user.username,
+			accessToken: mockTokenData.access_token,
+			refreshToken: mockTokenData.refresh_token,
+			tokenExpiry: new Date(Date.now() + mockTokenData.expires_in * 1000),
+			platformUserId: mockTokenData.user.id,
+			platformUserData: mockTokenData.user,
 			limits: {
-				postsPerHour: getPlatformLimit(platform, "hourly"),
-				postsPerDay: getPlatformLimit(platform, "daily"),
+				postsPerHour: 5,
+				postsPerDay: 20,
 			},
 			connectedAt: new Date(),
 			lastSyncAt: new Date(),
@@ -212,24 +187,22 @@ export async function POST(request: NextRequest) {
 
 		// Check if platform already connected
 		const existingPlatform = await db.collection("platforms").findOne({
-			userId: user.userId, // String comparison for Firebase UID
+			userId: user.userId,
 			name: platform.toLowerCase(),
 		});
 
 		let savedPlatform;
 		if (existingPlatform) {
-			// Update existing
 			await db
 				.collection("platforms")
 				.updateOne({ _id: existingPlatform._id }, { $set: platformData });
 			savedPlatform = { ...platformData, _id: existingPlatform._id };
 		} else {
-			// Insert new
 			const result = await db.collection("platforms").insertOne(platformData);
 			savedPlatform = { ...platformData, _id: result.insertedId };
 		}
 
-		console.log(`✅ ${platform} saved to database for user ${user.userId}`);
+		console.log(`✅ Mock ${platform} saved for user ${user.userId}`);
 
 		return NextResponse.json({
 			success: true,
@@ -247,18 +220,13 @@ export async function POST(request: NextRequest) {
 			},
 		});
 	} catch (error: any) {
-		console.error("Platform callback error:", error);
+		console.error("Callback error:", error);
 		return NextResponse.json(
 			{
 				success: false,
-				error: {
-					code: "SERVER_ERROR",
-					message: error.message || "Internal server error",
-				},
+				error: { message: error.message },
 			},
-			{
-				status: 500,
-			}
+			{ status: 500 }
 		);
 	}
 }
