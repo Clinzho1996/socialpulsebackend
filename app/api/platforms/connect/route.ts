@@ -6,31 +6,50 @@ import { NextRequest, NextResponse } from "next/server";
 const OAUTH_CONFIGS = {
 	twitter: {
 		authUrl: "https://twitter.com/i/oauth2/authorize",
+		tokenUrl: "https://api.twitter.com/2/oauth2/token",
 		scope: "tweet.read tweet.write users.read offline.access",
-		// Store the ENVIRONMENT VARIABLE NAME, not the value
 		envVarName: "TWITTER_CLIENT_ID",
+		requiresPKCE: true,
 	},
 	facebook: {
 		authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
 		scope: "public_profile,email",
 		envVarName: "FACEBOOK_CLIENT_ID",
+		requiresPKCE: false,
 	},
 	instagram: {
 		authUrl: "https://api.instagram.com/oauth/authorize",
 		scope: "user_profile,user_media",
 		envVarName: "INSTAGRAM_CLIENT_ID",
+		requiresPKCE: false,
 	},
 	linkedin: {
 		authUrl: "https://www.linkedin.com/oauth/v2/authorization",
 		scope: "w_member_social,r_liteprofile",
 		envVarName: "LINKEDIN_CLIENT_ID",
+		requiresPKCE: false,
 	},
 	tiktok: {
 		authUrl: "https://www.tiktok.com/auth/authorize/",
 		scope: "user.info.basic,video.upload",
 		envVarName: "TIKTOK_CLIENT_ID",
+		requiresPKCE: false,
 	},
 } as const;
+
+// Helper function to generate PKCE code verifier and challenge
+function generatePKCE() {
+	// Generate code verifier (43-128 characters, a-z, A-Z, 0-9, -, ., _, ~)
+	const codeVerifier = crypto.randomBytes(32).toString("base64url");
+
+	// Generate code challenge (SHA256 of code verifier, then base64url)
+	const codeChallenge = crypto
+		.createHash("sha256")
+		.update(codeVerifier)
+		.digest("base64url");
+
+	return { codeVerifier, codeChallenge };
+}
 
 export async function POST(request: NextRequest) {
 	try {
@@ -65,25 +84,7 @@ export async function POST(request: NextRequest) {
 
 		const config = OAUTH_CONFIGS[platform as keyof typeof OAUTH_CONFIGS];
 		const state = crypto.randomBytes(16).toString("hex");
-
-		// ✅ CORRECT: Get client ID using the environment variable name
 		const clientId = process.env[config.envVarName];
-
-		// Debug logging
-		console.log(`🔍 DEBUG for ${platform}:`);
-		console.log(`  - envVarName: ${config.envVarName}`);
-		console.log(`  - clientId exists: ${!!clientId}`);
-		console.log(
-			`  - clientId value: ${
-				clientId ? `${clientId.substring(0, 10)}...` : "undefined"
-			}`
-		);
-		console.log(`  - All FB env:`, {
-			FACEBOOK_CLIENT_ID: process.env.FACEBOOK_CLIENT_ID ? "set" : "missing",
-			FACEBOOK_CLIENT_SECRET: process.env.FACEBOOK_CLIENT_SECRET
-				? "set"
-				: "missing",
-		});
 
 		if (!clientId) {
 			return NextResponse.json(
@@ -92,12 +93,6 @@ export async function POST(request: NextRequest) {
 					error: {
 						code: "CONFIG_ERROR",
 						message: `${platform} OAuth not configured. Missing ${config.envVarName}`,
-						debug: {
-							envVarName: config.envVarName,
-							availableEnvVars: Object.keys(process.env).filter(
-								(key) => key.includes("FACEBOOK") || key.includes("CLIENT")
-							),
-						},
 					},
 				},
 				{ status: 500 }
@@ -113,15 +108,35 @@ export async function POST(request: NextRequest) {
 			state,
 		});
 
+		// Add PKCE parameters for Twitter/X
+		let codeVerifier = null;
+		if (config.requiresPKCE) {
+			const pkce = generatePKCE();
+			codeVerifier = pkce.codeVerifier;
+
+			params.append("code_challenge", pkce.codeChallenge);
+			params.append("code_challenge_method", "S256");
+		}
+
 		const authUrl = `${config.authUrl}?${params.toString()}`;
 
-		return NextResponse.json({
+		// Prepare response data
+		const responseData: any = {
 			success: true,
 			data: {
 				authUrl,
 				state,
 			},
-		});
+		};
+
+		// Include code verifier in response if needed (store securely!)
+		if (codeVerifier) {
+			responseData.data.codeVerifier = codeVerifier;
+			// IMPORTANT: In production, you should store this server-side
+			// and associate it with the user/session
+		}
+
+		return NextResponse.json(responseData);
 	} catch (error: any) {
 		console.error("Platform connect error:", error);
 		return NextResponse.json(
