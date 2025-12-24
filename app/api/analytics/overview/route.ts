@@ -12,6 +12,7 @@ function setCorsHeaders(
 		"http://localhost:5173",
 		"http://localhost:3000",
 		"https://socialpulseai.devclinton.org",
+		"https://socialpulseai.devclinton.org",
 	];
 
 	const origin = request.headers.get("origin");

@@ -6,6 +6,7 @@ const allowedOrigins = [
 	"http://localhost:3000", // Local Next.js
 	"https://socialpulseai-rose.vercel.app/",
 	"https://socialpulseai.devclinton.org",
+	"https://socialpulseai.devclinton.org",
 ];
 
 const corsOptions = {
