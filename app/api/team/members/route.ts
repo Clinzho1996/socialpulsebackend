@@ -1,10 +1,16 @@
-// /api/team/members/route.ts
+// If you have GET /api/team/members/[id]/route.ts
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
+import { ObjectId } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest) {
+export async function GET(
+	request: NextRequest,
+	{ params }: { params: Promise<{ id: string }> }
+) {
 	try {
+		const { id: memberId } = await params;
+
 		const user = await verifyToken(request);
 		if (!user) {
 			return NextResponse.json(
@@ -23,37 +29,40 @@ export async function GET(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		console.log("🔍 Getting members for Firebase user:", user.userId);
+		const member = await db.collection("team_members").findOne({
+			_id: new ObjectId(memberId),
+			workspaceId: user.userId,
+		});
 
-		// Query using Firebase UID as string
-		const members = await db
-			.collection("team_members")
-			.find({ workspaceId: user.userId }) // Use Firebase UID
-			.toArray();
-
-		console.log(
-			`✅ Found ${members.length} members for workspace ${user.userId}`
-		);
-
-		// Format the response
-		const formattedMembers = members.map((member) => ({
-			id: member._id?.toString() || "",
-			name: member.name || member.email.split("@")[0],
-			email: member.email,
-			role: member.role || "viewer",
-			status: member.status || "pending",
-			invitedAt: member.invitedAt?.toISOString() || new Date().toISOString(),
-			workspaceId: member.workspaceId,
-			invitedBy: member.invitedBy,
-			// Add more fields if needed
-		}));
+		if (!member) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: {
+						code: "NOT_FOUND",
+						message: "Team member not found",
+					},
+				},
+				{
+					status: 404,
+				}
+			);
+		}
 
 		return NextResponse.json({
 			success: true,
-			data: formattedMembers,
+			data: {
+				id: member._id.toString(),
+				name: member.name || member.email.split("@")[0],
+				email: member.email,
+				role: member.role || "viewer",
+				status: member.status || "pending",
+				invitedAt: member.invitedAt?.toISOString(),
+				workspaceId: member.workspaceId,
+			},
 		});
 	} catch (error: any) {
-		console.error("Get team members error:", error);
+		console.error("Get team member error:", error);
 		return NextResponse.json(
 			{
 				success: false,

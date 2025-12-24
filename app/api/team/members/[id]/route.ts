@@ -6,9 +6,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
 	request: NextRequest,
-	{ params }: { params: { id: string } }
+	{ params }: { params: Promise<{ id: string }> }
 ) {
 	try {
+		// Await the params Promise in Next.js 15
+		const { id: memberId } = await params;
+
 		const user = await verifyToken(request);
 		if (!user) {
 			return NextResponse.json(
@@ -26,7 +29,6 @@ export async function DELETE(
 		}
 
 		const { db } = await connectToDatabase();
-		const memberId = params.id;
 
 		// Find the member first to verify ownership
 		const member = await db.collection("team_members").findOne({
@@ -60,6 +62,23 @@ export async function DELETE(
 		});
 	} catch (error: any) {
 		console.error("Delete team member error:", error);
+
+		// Handle invalid ObjectId
+		if (error.message?.includes("input must be a 24 character hex string")) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: {
+						code: "INVALID_ID",
+						message: "Invalid team member ID format",
+					},
+				},
+				{
+					status: 400,
+				}
+			);
+		}
+
 		return NextResponse.json(
 			{
 				success: false,
