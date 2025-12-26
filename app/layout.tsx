@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "SocialPulseAI Backend",
+	title: "SocialPulseAI Backend API",
 	description: "Backend for SocialPulseAI application",
 };
 
