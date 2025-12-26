@@ -2,7 +2,10 @@
 	"crons": [
 		{
 			"path": "/api/cron/publish",
-			"schedule": "*/5 * * * *"
+			"schedule": "*/5 * * * *",
+			"headers": {
+				"Authorization": "Bearer u5LX7H9qYz3pRwKv2Nt8gBc6FjMx1DhP4QeS7VrZ0yWX9aT3G"
+			}
 		}
 	]
 }
