@@ -1,6 +1,5 @@
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
 
 // Allowed origins for CORS
@@ -73,21 +72,7 @@ export async function GET(request: NextRequest) {
 			return setCorsHeaders(response, request);
 		}
 
-		// ✅ Firebase UID is a string, not ObjectId
-		if (!user.userId || typeof user.userId !== "string") {
-			console.error("Invalid userId:", user.userId);
-			const response = NextResponse.json(
-				{
-					success: false,
-					error: {
-						code: "VALIDATION_ERROR",
-						message: "Invalid user ID",
-					},
-				},
-				{ status: 400 }
-			);
-			return setCorsHeaders(response, request);
-		}
+		console.log("📋 Fetching posts for Firebase user:", user.userId);
 
 		const { searchParams } = new URL(request.url);
 		const page = parseInt(searchParams.get("page") || "1");
@@ -98,9 +83,10 @@ export async function GET(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		// ✅ Query using Firebase UID as string
+		// Query for Firebase user ID
 		const query: any = {
-			userId: user.userId, // String, not ObjectId
+			userId: user.userId, // Firebase UID as string
+			userIdType: "firebase",
 		};
 
 		if (status && status !== "all") query.status = status;
@@ -108,6 +94,8 @@ export async function GET(request: NextRequest) {
 			query.platforms = platform;
 		}
 		if (search) query.content = { $regex: search, $options: "i" };
+
+		console.log("🔍 MongoDB query:", query);
 
 		// Get total count
 		const total = await db.collection("posts").countDocuments(query);
@@ -120,6 +108,8 @@ export async function GET(request: NextRequest) {
 			.skip((page - 1) * limit)
 			.limit(limit)
 			.toArray();
+
+		console.log(`✅ Found ${posts.length} posts for user`);
 
 		const response = NextResponse.json({
 			success: true,
@@ -152,7 +142,7 @@ export async function GET(request: NextRequest) {
 
 		return setCorsHeaders(response, request);
 	} catch (error: any) {
-		console.error("Get posts error:", error);
+		console.error("❌ Get posts error:", error);
 		const response = NextResponse.json(
 			{
 				success: false,
@@ -186,31 +176,11 @@ export async function POST(request: NextRequest) {
 			return setCorsHeaders(response, request);
 		}
 
-		// ✅ FIX: Validate userId before converting to ObjectId
-		let userIdQuery;
-		if (user.userId) {
-			// Firebase UID - store as string
-			userIdQuery = user.userId;
-		} else {
-			// MongoDB ObjectId - validate format
-			if (!user.userId || !ObjectId.isValid(user.userId)) {
-				console.error("Invalid MongoDB userId:", user.userId);
-				const response = NextResponse.json(
-					{
-						success: false,
-						error: {
-							code: "VALIDATION_ERROR",
-							message: "Invalid user ID format",
-						},
-					},
-					{
-						status: 400,
-					}
-				);
-				return setCorsHeaders(response, request);
-			}
-			userIdQuery = new ObjectId(user.userId);
-		}
+		console.log("📝 Creating post for Firebase user:", {
+			userId: user.userId,
+			email: user.email,
+			userIdType: "firebase",
+		});
 
 		const body = await request.json();
 		const { content, platforms, category, scheduledTime, mediaUrls, status } =
@@ -252,9 +222,10 @@ export async function POST(request: NextRequest) {
 
 		const { db } = await connectToDatabase();
 
-		// Create post with validated ObjectId
+		// ✅ Store userId as string for Firebase users
 		const newPost = {
-			userId: new ObjectId(user.userId),
+			userId: user.userId, // Firebase UID as string
+			userIdType: "firebase",
 			content,
 			platforms,
 			category: category || "feed",
@@ -271,6 +242,8 @@ export async function POST(request: NextRequest) {
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		};
+
+		console.log("📦 Post data to insert:", newPost);
 
 		const result = await db.collection("posts").insertOne(newPost);
 
@@ -297,7 +270,7 @@ export async function POST(request: NextRequest) {
 
 		return setCorsHeaders(response, request);
 	} catch (error: any) {
-		console.error("Create post error:", error);
+		console.error("❌ Create post error:", error);
 		const response = NextResponse.json(
 			{
 				success: false,
