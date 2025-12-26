@@ -14,7 +14,8 @@ const PLATFORM_CONFIGS = {
 	},
 	facebook: {
 		authUrl: "https://www.facebook.com/v19.0/dialog/oauth",
-		scope: "public_profile,email,pages_show_list,pages_read_engagement",
+		// scope: "public_profile,email,pages_show_list,pages_read_engagement",
+		scope: "public_profile,email",
 		clientId: process.env.FACEBOOK_CLIENT_ID,
 		tokenUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
 		apiBase: "https://graph.facebook.com/v19.0",
