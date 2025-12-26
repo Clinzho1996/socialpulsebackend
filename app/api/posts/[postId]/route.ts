@@ -175,7 +175,7 @@ export async function DELETE(
 		const { db } = await connectToDatabase();
 		const result = await db.collection("posts").deleteOne({
 			_id: new ObjectId(postId),
-			userId: new ObjectId(user.userId),
+			userId: user.userId,
 		});
 
 		if (result.deletedCount === 0) {
