@@ -1,24 +1,26 @@
+// /app/api/posts/publish/route.js
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
 import { postToPlatforms } from "@/lib/social/platformApis";
 import { ObjectId } from "mongodb";
+import { NextResponse } from "next/server";
 
 export async function POST(request) {
 	try {
 		const user = await verifyToken(request);
 		if (!user) {
-			return new Response(
-				JSON.stringify({ success: false, error: "Authentication required" }),
-				{ status: 401, headers: { "Content-Type": "application/json" } }
+			return NextResponse.json(
+				{ success: false, error: "Authentication required" },
+				{ status: 401 }
 			);
 		}
 
-		const { postId, immediate = false } = await request.json();
+		const { postId, immediate = true } = await request.json();
 
 		if (!postId) {
-			return new Response(
-				JSON.stringify({ success: false, error: "Post ID is required" }),
-				{ status: 400, headers: { "Content-Type": "application/json" } }
+			return NextResponse.json(
+				{ success: false, error: "Post ID is required" },
+				{ status: 400 }
 			);
 		}
 
@@ -31,17 +33,17 @@ export async function POST(request) {
 		});
 
 		if (!post) {
-			return new Response(
-				JSON.stringify({ success: false, error: "Post not found" }),
-				{ status: 404, headers: { "Content-Type": "application/json" } }
+			return NextResponse.json(
+				{ success: false, error: "Post not found" },
+				{ status: 404 }
 			);
 		}
 
-		// Check if post is scheduled (not already published)
+		// Allow re-publishing if already published
 		if (post.status === "published" && !immediate) {
-			return new Response(
-				JSON.stringify({ success: false, error: "Post already published" }),
-				{ status: 400, headers: { "Content-Type": "application/json" } }
+			return NextResponse.json(
+				{ success: false, error: "Post already published" },
+				{ status: 400 }
 			);
 		}
 
@@ -61,23 +63,27 @@ export async function POST(request) {
 		);
 
 		if (missingPlatforms.length > 0 && !immediate) {
-			return new Response(
-				JSON.stringify({
+			return NextResponse.json(
+				{
 					success: false,
 					error: `Some platforms not connected: ${missingPlatforms.join(", ")}`,
-				}),
-				{ status: 400, headers: { "Content-Type": "application/json" } }
+				},
+				{ status: 400 }
 			);
 		}
 
 		// Post to platforms
 		const platformsToPost = immediate ? connectedPlatformNames : post.platforms;
+		console.log(`🚀 Publishing post ${postId} to platforms:`, platformsToPost);
+
 		const results = await postToPlatforms(
 			user.userId,
 			post.content,
 			platformsToPost,
 			post.mediaUrls || []
 		);
+
+		console.log(`📊 Publishing results:`, results);
 
 		// Determine status
 		const successful = results.filter((r) => r.success);
@@ -118,35 +124,32 @@ export async function POST(request) {
 			},
 		};
 
-		if (immediate) {
-			updateData.publishedAt = new Date();
-			updateData.platformPostIds = platformPostIds;
-		}
+		// Always update publishedAt for manual publishing
+		updateData.publishedAt = new Date();
+		updateData.platformPostIds = platformPostIds;
 
 		await db
 			.collection("posts")
 			.updateOne({ _id: post._id }, { $set: updateData });
 
-		return new Response(
-			JSON.stringify({
-				success: true,
-				data: {
-					message,
-					status: newStatus,
-					results: results,
-					platformPostIds: platformPostIds,
-				},
-			}),
-			{ status: 200, headers: { "Content-Type": "application/json" } }
-		);
+		return NextResponse.json({
+			success: true,
+			data: {
+				message,
+				status: newStatus,
+				results: results,
+				platformPostIds: platformPostIds,
+				postId: post._id.toString(),
+			},
+		});
 	} catch (error) {
 		console.error("Publish error:", error);
-		return new Response(
-			JSON.stringify({
+		return NextResponse.json(
+			{
 				success: false,
 				error: error.message || "Failed to publish post",
-			}),
-			{ status: 500, headers: { "Content-Type": "application/json" } }
+			},
+			{ status: 500 }
 		);
 	}
 }
