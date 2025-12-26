@@ -74,10 +74,13 @@ export async function POST(request) {
 		// Post to platforms
 		const platformsToPost = immediate ? connectedPlatformNames : post.platforms;
 		console.log(`🚀 Publishing post ${postId} to platforms:`, platformsToPost);
+		const uniqueContent = `${
+			post.content
+		}\n\n🕐 ${new Date().toLocaleString()}`;
 
 		const results = await postToPlatforms(
 			user.userId,
-			post.content,
+			uniqueContent,
 			platformsToPost,
 			post.mediaUrls || []
 		);
