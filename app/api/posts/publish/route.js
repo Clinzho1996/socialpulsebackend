@@ -10,7 +10,7 @@ export async function POST(request) {
 		const user = await verifyToken(request);
 		if (!user) {
 			return NextResponse.json(
-				{ success: false, error: "Authentication required" },
+				{ success: false, error: "Authentication required by user" },
 				{ status: 401 }
 			);
 		}
