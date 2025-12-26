@@ -172,8 +172,11 @@ async function exchangeFacebookCode(
 	const response = await fetch(
 		"https://graph.facebook.com/v19.0/oauth/access_token",
 		{
-			method: "GET",
-			body: params,
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: params.toString(),
 		}
 	);
 
