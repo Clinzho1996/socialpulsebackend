@@ -187,29 +187,21 @@ export async function POST(request: NextRequest) {
 		}
 
 		// ✅ FIX: Validate userId before converting to ObjectId
-		let userIdQuery;
-		if (user.userId) {
-			// Firebase UID - store as string
-			userIdQuery = user.userId;
-		} else {
-			// MongoDB ObjectId - validate format
-			if (!user.userId || !ObjectId.isValid(user.userId)) {
-				console.error("Invalid MongoDB userId:", user.userId);
-				const response = NextResponse.json(
-					{
-						success: false,
-						error: {
-							code: "VALIDATION_ERROR",
-							message: "Invalid user ID format",
-						},
+		if (!user.userId || !ObjectId.isValid(user.userId)) {
+			console.error("Invalid userId:", user.userId);
+			const response = NextResponse.json(
+				{
+					success: false,
+					error: {
+						code: "VALIDATION_ERROR",
+						message: "Invalid user ID format",
 					},
-					{
-						status: 400,
-					}
-				);
-				return setCorsHeaders(response, request);
-			}
-			userIdQuery = new ObjectId(user.userId);
+				},
+				{
+					status: 400,
+				}
+			);
+			return setCorsHeaders(response, request);
 		}
 
 		const body = await request.json();
