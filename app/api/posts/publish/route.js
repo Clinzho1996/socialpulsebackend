@@ -147,7 +147,7 @@ export async function POST(request) {
 		return NextResponse.json(
 			{
 				success: false,
-				error: error.message || "Failed to publish post",
+				error: error.message || "Failed to publish post to platforms",
 			},
 			{ status: 500 }
 		);
