@@ -6,6 +6,7 @@ export type BillingCycle = 'monthly' | 'yearly';
 export interface Platform {
   _id: string;
   name: PlatformName;
+  email: string;
   connected: boolean;
   username?: string;
   limits: {
