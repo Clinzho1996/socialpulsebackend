@@ -1,4 +1,3 @@
-// /app/api/posts/publish/route.js
 import { verifyToken } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/mongodb";
 import { postToPlatforms } from "@/lib/social/platformApis";
@@ -10,7 +9,7 @@ export async function POST(request) {
 		const user = await verifyToken(request);
 		if (!user) {
 			return NextResponse.json(
-				{ success: false, error: "Authentication required by user" },
+				{ success: false, error: "Authentication required" },
 				{ status: 401 }
 			);
 		}
@@ -108,29 +107,45 @@ export async function POST(request) {
 			platformPostIds[result.platform] = result.postId;
 		});
 
-		// Update post
-		const updateData = {
+		// Create publishing history entry
+		const publishingHistoryEntry = {
+			timestamp: new Date(),
+			results: results,
 			status: newStatus,
-			updatedAt: new Date(),
-			publishingResults: results,
-			finalMessage: message,
-			$push: {
-				publishingHistory: {
-					timestamp: new Date(),
-					results: results,
-					status: newStatus,
-					triggeredBy: "manual",
-				},
-			},
+			triggeredBy: "manual",
 		};
 
-		// Always update publishedAt for manual publishing
-		updateData.publishedAt = new Date();
-		updateData.platformPostIds = platformPostIds;
+		// Update post - CORRECTED: Use separate update operators
+		const updateResult = await db.collection("posts").updateOne(
+			{ _id: post._id },
+			{
+				$set: {
+					status: newStatus,
+					updatedAt: new Date(),
+					publishingResults: results,
+					finalMessage: message,
+					publishedAt: new Date(),
+					platformPostIds: platformPostIds,
+				},
+				$push: {
+					publishingHistory: publishingHistoryEntry,
+				},
+			}
+		);
 
-		await db
-			.collection("posts")
-			.updateOne({ _id: post._id }, { $set: updateData });
+		if (updateResult.modifiedCount === 0) {
+			console.error("Failed to update post");
+			return NextResponse.json(
+				{
+					success: false,
+					error: "Failed to update post in database",
+				},
+				{ status: 500 }
+			);
+		}
+
+		// Get the updated post
+		const updatedPost = await db.collection("posts").findOne({ _id: post._id });
 
 		return NextResponse.json({
 			success: true,
@@ -140,6 +155,16 @@ export async function POST(request) {
 				results: results,
 				platformPostIds: platformPostIds,
 				postId: post._id.toString(),
+				post: {
+					id: updatedPost._id.toString(),
+					content: updatedPost.content,
+					platforms: updatedPost.platforms,
+					status: updatedPost.status,
+					scheduledTime: updatedPost.scheduledTime?.toISOString(),
+					publishedAt: updatedPost.publishedAt?.toISOString(),
+					finalMessage: updatedPost.finalMessage,
+					platformPostIds: updatedPost.platformPostIds,
+				},
 			},
 		});
 	} catch (error) {
