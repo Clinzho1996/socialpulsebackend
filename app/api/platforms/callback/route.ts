@@ -161,24 +161,14 @@ async function exchangeFacebookCode(
 		throw new Error("Facebook OAuth credentials are missing");
 	}
 
-	const params = new URLSearchParams({
-		client_id: clientId,
-		client_secret: clientSecret,
-		redirect_uri: redirectUri,
-		code,
-		grant_type: "authorization_code",
-	});
+	// Correct Facebook OAuth flow
+	const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+		redirectUri
+	)}&client_secret=${clientSecret}&code=${code}`;
 
-	const response = await fetch(
-		"https://graph.facebook.com/v19.0/oauth/access_token",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-			body: params.toString(),
-		}
-	);
+	const response = await fetch(tokenUrl, {
+		method: "GET", // Facebook accepts GET for this
+	});
 
 	const data = await response.json();
 
@@ -193,21 +183,9 @@ async function exchangeFacebookCode(
 	);
 	const userData = await userResponse.json();
 
-	// Fetch pages if user has any
-	let pages: any[] = [];
-	try {
-		const pagesResponse = await fetch(
-			`https://graph.facebook.com/v19.0/me/accounts?access_token=${data.access_token}`
-		);
-		const pagesData = await pagesResponse.json();
-		pages = pagesData.data || [];
-	} catch (error) {
-		console.log("No Facebook pages found or error fetching pages");
-	}
-
 	return {
 		accessToken: data.access_token,
-		refreshToken: data.access_token,
+		refreshToken: data.access_token, // Facebook doesn't give refresh tokens
 		expiresIn: data.expires_in,
 		tokenType: "bearer",
 		user: {
@@ -216,7 +194,6 @@ async function exchangeFacebookCode(
 			name: userData.name,
 			email: userData.email || null,
 			profileImageUrl: userData.picture?.data?.url || null,
-			pages: pages,
 		},
 	};
 }
